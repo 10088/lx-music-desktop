@@ -14,17 +14,20 @@ export default {
 
     for (const item of arr) {
       if (lrcSet.has(item.time)) {
+        const tItem = lrc.pop()
+        tItem.time = lrc[lrc.length - 1].time
+        lrcT.push(tItem)
         lrc.push(item)
       } else {
-        lrcT.push(item)
+        lrc.push(item)
         lrcSet.add(item.time)
       }
     }
-    if (lrc.length) {
-      lrc.unshift(lrcT.shift())
-    } else {
-      lrc = lrcT
-      lrcT = []
+
+    if (lrcT.length && lrc.length > lrcT.length) {
+      const tItem = lrc.pop()
+      tItem.time = lrc[lrc.length - 1].time
+      lrcT.push(tItem)
     }
 
     return {
@@ -40,16 +43,21 @@ export default {
     requestObj.promise = requestObj.promise.then(({ body }) => {
       // console.log(body)
       if (!body.data?.lrclist?.length) return Promise.reject(new Error('Get lyric failed'))
-      const { lrc, lrcT } = this.sortLrcArr(body.data.lrclist)
+      let lrcInfo
+      try {
+        lrcInfo = this.sortLrcArr(body.data.lrclist)
+      } catch {
+        return Promise.reject(new Error('Get lyric failed'))
+      }
       // console.log(body.data.lrclist)
-      // console.log(lrc, lrcT)
+      // console.log(lrcInfo.lrc, lrcInfo.lrcT)
       // console.log({
       //   lyric: decodeName(this.transformLrc(body.data.songinfo, lrc)),
       //   tlyric: decodeName(this.transformLrc(body.data.songinfo, lrcT)),
       // })
       return {
-        lyric: decodeName(this.transformLrc(body.data.songinfo, lrc)),
-        tlyric: lrcT.length ? decodeName(this.transformLrc(body.data.songinfo, lrcT)) : '',
+        lyric: decodeName(this.transformLrc(body.data.songinfo, lrcInfo.lrc)),
+        tlyric: lrcInfo.lrcT.length ? decodeName(this.transformLrc(body.data.songinfo, lrcInfo.lrcT)) : '',
       }
     })
     return requestObj

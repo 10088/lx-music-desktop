@@ -1,4 +1,6 @@
 import music from '../../utils/music'
+import { markRawList } from '@renderer/utils/vueTools'
+
 const sortList = {}
 const sources = []
 const cache = new Map()
@@ -79,21 +81,25 @@ const actions = {
     commit('clearList')
     return music[source].songList.getList(sortId, tabId, page).then(result => commit('setList', { result, key, page }))
   },
-  getListDetail({ state, rootState, commit }, { id, page }) {
-    let source = rootState.setting.songList.source
+  getListDetail({ state, commit }, { id, source, page, isRefresh = false }) {
     let key = `sdetail__${source}__${id}__${page}`
-    if (state.listDetail.list.length && state.listDetail.key == key) return Promise.resolve()
+    if (state.listDetail.list.length && state.listDetail.key == key) return Promise.resolve(state.listDetail.list)
     commit('clearListDetail')
+    if (isRefresh && cache.has(key)) cache.delete(key)
     return (
       cache.has(key)
         ? Promise.resolve(cache.get(key))
         : music[source].songList.getListDetail(id, page).then(result => ({ ...result, list: filterList(result.list) }))
-    ).then(result => commit('setListDetail', { result, key, source, id, page }))
+    ).then(result => {
+      commit('setListDetail', { result, key, source, id, page })
+      return result.list
+    })
   },
-  getListDetailAll({ state, rootState }, { source, id }) {
+  getListDetailAll({ state, rootState }, { source, id, isRefresh = false }) {
     // console.log(source, id)
     const loadData = (id, page) => {
       let key = `sdetail__${source}__${id}__${page}`
+      if (isRefresh && cache.has(key)) cache.delete(key)
       return cache.has(key)
         ? Promise.resolve(cache.get(key))
         : music[source].songList.getListDetail(id, page).then(result => {
@@ -125,7 +131,7 @@ const mutations = {
     state.list.total = 0
   },
   setList(state, { result, key, page }) {
-    state.list.list = result.list
+    state.list.list = markRawList(result.list)
     state.list.total = result.total
     state.list.limit = result.limit
     state.list.page = page
@@ -133,7 +139,7 @@ const mutations = {
     cache.set(key, result)
   },
   setListDetail(state, { result, key, source, id, page }) {
-    state.listDetail.list = result.list
+    state.listDetail.list = markRawList(result.list)
     state.listDetail.id = id
     state.listDetail.source = source
     state.listDetail.total = result.total
@@ -150,7 +156,6 @@ const mutations = {
     cache.set(key, result)
   },
   setVisibleListDetail(state, bool) {
-    if (!bool) state.listDetail.list = []
     state.isVisibleListDetail = bool
   },
   setSelectListInfo(state, info) {

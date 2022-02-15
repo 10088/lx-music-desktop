@@ -8,6 +8,10 @@ const names = {
     clear_cache: 'clear_cache',
     get_cache_size: 'get_cache_size',
     get_env_params: 'get_env_params',
+    clear_env_params_deeplink: 'clear_env_params_deeplink',
+    wait: 'wait',
+    wait_cancel: 'wait_cancel',
+    open_dev_tools: 'open_dev_tools',
 
     set_music_meta: 'set_music_meta',
     progress: 'progress',
@@ -35,7 +39,7 @@ const names = {
 
     lang_s2t: 'lang_s2t',
 
-    // handle_kw_decode_lyric: 'handle_kw_decode_lyric',
+    handle_kw_decode_lyric: 'handle_kw_decode_lyric',
     get_lyric_info: 'get_lyric_info',
     set_lyric_info: 'set_lyric_info',
     set_config: 'set_config',
