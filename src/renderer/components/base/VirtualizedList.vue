@@ -1,5 +1,11 @@
 <template>
-  <component :is="containerEl" :class="containerClass" tabindex="0" ref="dom_scrollContainer" style="outline: none; height: 100%; overflow: auto; position: relative; display: block; contain: strict;">
+  <component
+    :is="containerEl"
+    ref="dom_scrollContainer"
+    :class="containerClass"
+    tabindex="0"
+    style="outline: none; height: 100%; overflow-y: auto; position: relative; display: block; contain: strict; box-sizing: border-box; will-change: transform;"
+  >
     <component :is="contentEl" :class="contentClass" :style="contentStyle">
       <div v-for="item in views" :key="item.key" :style="item.style">
         <slot name="default" v-bind="{ item: item.item, index: item.index }" />
@@ -18,6 +24,24 @@ import {
   onMounted,
   onBeforeUnmount,
 } from 'vue'
+
+/**
+ * 生成防抖函数
+ * @param {*} fn
+ * @param {*} delay
+ */
+export const debounce = (fn, delay = 100) => {
+  let timer = null
+  let _args = null
+  return function(...args) {
+    _args = args
+    if (timer) clearTimeout(timer)
+    timer = setTimeout(() => {
+      timer = null
+      fn.apply(this, _args)
+    }, delay)
+  }
+}
 
 const easeInOutQuad = (t, b, c, d) => {
   t /= d / 2
@@ -57,7 +81,7 @@ const handleScroll = (element, to, duration = 300, callback = () => {}, onCancel
         onCancel()
         return
       }
-      setTimeout(animateScroll, increment)
+      window.setTimeout(animateScroll, increment)
     } else {
       callback()
     }
@@ -88,33 +112,31 @@ export default {
       type: String,
       default: 'virtualized-list-content',
     },
-    outsideNum: {
-      type: Number,
-      default: 1,
-    },
     itemHeight: {
       type: Number,
       required: true,
     },
     keyName: {
       type: String,
-      require: true,
+      required: true,
     },
     list: {
       type: Array,
-      require: true,
+      required: true,
     },
   },
   emits: ['scroll'],
   setup(props, { emit }) {
     const views = ref([])
     const dom_scrollContainer = ref(null)
+    let isListScrolling = false
+    const isListScrollingRef = ref(false)
     let startIndex = -1
     let endIndex = -1
     let scrollTop = -1
     let cachedList = []
     let cancelScroll = null
-    let isScrolling = false
+    let isAutoScrolling = false
     let scrollToValue = 0
 
     const createList = (startIndex, endIndex) => {
@@ -141,12 +163,12 @@ export default {
       const scrollContainerHeight = dom_scrollContainer.value.clientHeight
       const currentEndIndex = currentStartIndex + Math.ceil(scrollContainerHeight / itemHeight)
       const continuous = currentStartIndex <= endIndex && currentEndIndex >= startIndex
-      const currentStartRenderIndex = Math.max(currentStartIndex - props.outsideNum, 0)
-      const currentEndRenderIndex = currentEndIndex + props.outsideNum + 1
+      const currentStartRenderIndex = Math.max(currentStartIndex, 0)
+      const currentEndRenderIndex = currentEndIndex + 1
       // console.log(continuous)
       // debugger
       if (continuous) {
-        // if (Math.abs(currentScrollTop - this.scrollTop) < this.itemHeight * this.outsideNum * 0.6) return
+        // if (Math.abs(currentScrollTop - this.scrollTop) < this.itemHeight * 0.6) return
         // console.log('update')
         // if (currentScrollTop > scrollTop) { // scroll down
         //   // console.log('scroll down')
@@ -162,67 +184,87 @@ export default {
         //   views.value = createList(currentStartRenderIndex, currentEndRenderIndex)
         // } else return
         if (currentScrollTop == scrollTop && endIndex >= currentEndIndex) return
-        views.value = createList(currentStartRenderIndex, currentEndRenderIndex)
+        requestAnimationFrame(() => {
+          views.value = createList(currentStartRenderIndex, currentEndRenderIndex)
+        })
       } else {
-        views.value = createList(currentStartRenderIndex, currentEndRenderIndex)
+        requestAnimationFrame(() => {
+          views.value = createList(currentStartRenderIndex, currentEndRenderIndex)
+        })
       }
       startIndex = currentStartIndex
       endIndex = currentEndIndex
       scrollTop = currentScrollTop
     }
 
+    const setStopScrollStatus = debounce(() => {
+      isListScrolling = false
+      isListScrollingRef.value = false
+    }, 200)
     const onScroll = event => {
+      if (!isListScrolling) isListScrolling = isListScrollingRef.value = true
+      setStopScrollStatus()
+
       const currentScrollTop = dom_scrollContainer.value.scrollTop
-      if (Math.abs(currentScrollTop - scrollTop) > props.itemHeight * props.outsideNum * 0.6) {
+      if (Math.abs(currentScrollTop - scrollTop) > props.itemHeight * 0.6) {
         updateView(currentScrollTop)
       }
       emit('scroll', event)
     }
 
-    const scrollTo = (scrollTop, animate = false) => {
-      return new Promise(resolve => {
-        if (cancelScroll) {
-          cancelScroll(resolve)
-        } else {
-          resolve()
-        }
-      }).then(() => {
-        return new Promise((resolve, reject) => {
+    const scrollTo = (scrollTop, animate = false, onScrollEnd) => {
+      if (onScrollEnd) {
+        new Promise(resolve => {
+          if (cancelScroll) {
+            cancelScroll(resolve)
+          } else {
+            resolve()
+          }
+        }).then(() => {
           if (animate) {
-            isScrolling = true
+            isAutoScrolling = true
             scrollToValue = scrollTop
             cancelScroll = handleScroll(dom_scrollContainer.value, scrollTop, 300, () => {
               cancelScroll = null
-              isScrolling = false
-              resolve()
+              isAutoScrolling = false
+              onScrollEnd(true)
             }, () => {
               cancelScroll = null
-              isScrolling = false
-              reject('canceled')
+              isAutoScrolling = false
+              onScrollEnd('canceled')
             })
           } else {
             dom_scrollContainer.value.scrollTop = scrollTop
           }
         })
-      })
+      } else {
+        dom_scrollContainer.value.scrollTo({
+          top: scrollTop,
+          behavior: animate ? 'smooth' : 'instant',
+        })
+      }
     }
 
-    const scrollToIndex = (index, offset = 0, animate = false) => {
-      return scrollTo(Math.max(index * props.itemHeight + offset, 0), animate)
+    const scrollToIndex = (index, offset = 0, animate = false, onScrollEnd) => {
+      scrollTo(Math.max(index * props.itemHeight + offset, 0), animate, onScrollEnd)
     }
 
     const getScrollTop = () => {
-      return isScrolling ? scrollToValue : dom_scrollContainer.value.scrollTop
+      return isAutoScrolling ? scrollToValue : dom_scrollContainer.value.scrollTop
     }
 
     const handleResize = () => {
-      setTimeout(updateView)
+      window.setTimeout(updateView)
     }
 
-    const contentStyle = computed(() => ({
-      display: 'block',
-      height: props.list.length * props.itemHeight + 'px',
-    }))
+    const contentStyle = computed(() => {
+      const style = {
+        display: 'block',
+        height: props.list.length * props.itemHeight + 'px',
+      }
+      if (isListScrollingRef.value) style['pointer-events'] = 'none'
+      return style
+    })
 
     const handleReset = list => {
       cachedList = Array(list.length)
